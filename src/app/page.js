@@ -256,7 +256,7 @@ export default function Home() {
             ) : null}
           </Dialog>
         </div>
-        <div>{error[0]?.formattedMessage}</div>
+        {/* <div>{error[0]?.formattedMessage}</div> */}
       </main>
     </div>
   );
