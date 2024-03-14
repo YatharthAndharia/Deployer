@@ -1,4 +1,8 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {};
+export default {
+  webpack5: true,
+  webpack: (config) => {
+    config.resolve.fallback = { fs: false };
 
-export default nextConfig;
+    return config;
+  },
+};
