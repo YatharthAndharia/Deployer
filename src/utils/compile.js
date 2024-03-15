@@ -10,8 +10,8 @@ const compile = (contractCode) => {
           const output = e.data.output;
 
           let compiledContracts = {};
-          console.log(output.errors?.length > 0);
-          if (output.errors?.length <= 0) {
+
+          if (!output.errors) {
             for (var contractName in output.contracts['contract']) {
               compiledContracts = {
                 byteCode:
@@ -42,7 +42,6 @@ const compile = (contractCode) => {
       });
     });
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };

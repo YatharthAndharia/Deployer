@@ -1,11 +1,12 @@
+/* eslint-disable @next/next/no-sync-scripts */
 'use client';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { compile } from '@/utils/compile';
 import { ethers } from 'ethers';
 import { deploy } from '@/utils/deploy';
-import { ColorRing } from 'react-loader-spinner';
+
 import {
   Dialog,
   DialogContent,
@@ -17,11 +18,14 @@ import {
 import { MdContentCopy } from 'react-icons/md';
 import { SiHiveBlockchain } from 'react-icons/si';
 import { Input } from '@/components/ui/input';
+import Head from 'next/head';
+import Editor from '@monaco-editor/react';
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
   const [textareaValue, setTextareaValue] = useState('');
   const [inputValue, setInputValue] = useState('');
+
   const [byteCode, setByteCode] = useState('');
   const [error, setErrors] = useState('');
   const [showDialog, setShowDialog] = useState(false);
@@ -30,10 +34,13 @@ export default function Home() {
   const [address, setAddress] = useState('');
   const [network, setNetwork] = useState('');
   const [contractAddress, setContractAddress] = useState('');
+  const [showContractAddress, setShowContractAddress] = useState(false);
 
   const [contractName, setContractName] = useState();
   const [provider, setProvider] = useState();
   const [signer, setSigner] = useState();
+  const [showInput, setShowInput] = useState(false);
+  const editorRef = useRef(null);
 
   const handleCopyClick = async ({
     abi = null,
@@ -47,7 +54,6 @@ export default function Home() {
         await navigator.clipboard.writeText(byteCode);
       } else if (contractAddress) {
         await navigator.clipboard.writeText(contractAddress);
-        setShowDialog(false);
       }
     } catch (error) {
       console.error('Failed to copy address:', error);
@@ -86,7 +92,7 @@ export default function Home() {
   };
 
   const handleTextAreaChange = (event) => {
-    setTextareaValue(event.target.value);
+    setTextareaValue(event);
   };
 
   const handleInputChange = (event) => {
@@ -94,19 +100,32 @@ export default function Home() {
   };
 
   const handleCompile = async () => {
+    setShowDialog(false);
     if (textareaValue) {
       try {
         const { byteCode, contractName, abi, error } = await compile(
           textareaValue,
         );
+
         setByteCode(byteCode);
         setAbi(abi);
         setContractName(contractName);
-        setShowDialog(true);
+        error ? alert(error[0].formattedMessage) : setShowDialog(true);
         setErrors(error);
       } catch (error) {
-        console.log(error);
-        throw new Error(error);
+        setShowDialog(false);
+        const errorCodeRegex = /code=([A-Z_]+)/;
+
+        // Match the error code using the regex
+        const match = error.message.match(errorCodeRegex);
+
+        // Extract the error code if a match is found
+        if (match) {
+          const errorCode = match[1];
+          alert(errorCode);
+        } else {
+          alert('We are sorry! but something went wrong!');
+        }
       }
     }
   };
@@ -115,11 +134,10 @@ export default function Home() {
     try {
       if (!signer) {
         alert('Please connect the wallet first...');
-      }
-      if (textareaValue) {
+      } else if (textareaValue) {
+        setShowContractAddress(false);
         setLoading(true);
         const { byteCode, contractName, abi } = await compile(textareaValue);
-
         setByteCode(byteCode);
         setAbi(abi);
         setContractName(contractName);
@@ -132,16 +150,52 @@ export default function Home() {
         });
 
         setContractAddress(contractAddress);
+        setShowContractAddress(true);
         setShowDialog(true);
         setLoading(false);
       }
     } catch (error) {
       setLoading(false);
-      throw new Error(error);
+      const errorCodeRegex = /code=([A-Z_]+)/;
+
+      // Match the error code using the regex
+      const match = error.message.match(errorCodeRegex);
+
+      // Extract the error code if a match is found
+      if (match) {
+        const errorCode = match[1];
+        alert(errorCode);
+      } else {
+        alert('We are sorry! but something went wrong!');
+      }
+    }
+  };
+  const handleShowConstructorInput = async () => {
+    try {
+      setShowDialog(false);
+      const { byteCode, contractName, abi, error } = await compile(
+        textareaValue,
+      );
+
+      setByteCode(byteCode);
+      setAbi(abi);
+      setContractName(contractName);
+
+      if (abi) {
+        const data = abi.find((item) => item.type === 'constructor');
+
+        setShowInput(data?.inputs.length > 0);
+      }
+      setShowDialog(true);
+    } catch (error) {
+      alert('Sorry! Something went wrong!');
     }
   };
   return (
     <div>
+      <Head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.23.0/min/vs/loader.min.js"></script>
+      </Head>
       <div className="w-full flex md:justify-around justify-center">
         <div className="mt-8 font-bold text-4xl">
           <SiHiveBlockchain></SiHiveBlockchain>
@@ -177,11 +231,19 @@ export default function Home() {
         )}
       </div>
       <main className="flex flex-col items-center justify-between p-12">
-        <Textarea
-          className="font-serif"
+        <Editor
+          onMount={(editor, monaco) => {
+            console.log(editor);
+            editorRef.current = editor;
+            editor.revealLine(2);
+          }}
+          className="font-s"
+          theme="vs-dark"
+          height="90vh"
+          defaultLanguage="sol"
+          defaultValue={`// SPDX-License-Identifier: MIT \nHello Moto\nAbcd\ASDFG`}
           onChange={handleTextAreaChange}
-          placeholder="Paste your solidity code here..."
-        ></Textarea>
+        />
         <div>
           <Dialog>
             <DialogTrigger
@@ -193,7 +255,7 @@ export default function Home() {
             {showDialog ? (
               <DialogContent
                 handleDialogClose={() => {
-                  setShowDialog(false);
+                  setInputValue(null);
                 }}
               >
                 <DialogHeader>
@@ -218,31 +280,35 @@ export default function Home() {
                   </DialogDescription>
                 </DialogHeader>
               </DialogContent>
-            ) : null}
+            ) : undefined}
           </Dialog>
 
           <Dialog>
             <DialogTrigger
-              // onClick={handleDeploy}
+              onClick={handleShowConstructorInput}
               className="m-1 mt-8 border border-gray-400 rounded-md p-2 hover:bg-gray-100 hover:text-black text-white bg-black"
             >
               Deploy
             </DialogTrigger>
-            {true ? (
+            {showDialog ? (
               <DialogContent
                 handleDialogClose={() => {
                   setInputValue(null);
+                  setShowContractAddress(false);
                 }}
               >
                 <DialogHeader>
                   <DialogTitle>{contractName}</DialogTitle>
-                  <DialogDescription className="flex justify-between p-2">
-                    Constructor Arguments
-                    <Input
-                      onChange={handleInputChange}
-                      placeholder="type each args seperated by coma..."
-                    ></Input>
-                  </DialogDescription>
+                  {showInput ? (
+                    <DialogDescription className="flex justify-between p-2">
+                      Constructor Arguments
+                      <Input
+                        onChange={handleInputChange}
+                        placeholder="Separate arguments by commas"
+                      ></Input>
+                    </DialogDescription>
+                  ) : undefined}
+
                   <Button
                     disabled={loading}
                     onClick={async () => {
@@ -251,12 +317,22 @@ export default function Home() {
                   >
                     {loading ? 'Deploying...' : 'Deploy'}
                   </Button>
+                  {showContractAddress ? (
+                    <div className="flex">
+                      Contract deployed to {contractAddress}
+                      <MdContentCopy
+                        className="text-2xl mt-6 hover:text-gray-600"
+                        onClick={() => {
+                          handleCopyClick({ contractAddress });
+                        }}
+                      ></MdContentCopy>
+                    </div>
+                  ) : undefined}
                 </DialogHeader>
               </DialogContent>
             ) : null}
           </Dialog>
         </div>
-        {/* <div>{error[0]?.formattedMessage}</div> */}
       </main>
     </div>
   );
