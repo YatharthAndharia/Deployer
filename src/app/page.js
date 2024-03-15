@@ -232,16 +232,11 @@ export default function Home() {
       </div>
       <main className="flex flex-col items-center justify-between p-12">
         <Editor
-          onMount={(editor, monaco) => {
-            console.log(editor);
-            editorRef.current = editor;
-            editor.revealLine(2);
-          }}
           className="font-s"
           theme="vs-dark"
           height="90vh"
           defaultLanguage="sol"
-          defaultValue={`// SPDX-License-Identifier: MIT \nHello Moto\nAbcd\ASDFG`}
+          defaultValue={`// SPDX-License-Identifier: MIT`}
           onChange={handleTextAreaChange}
         />
         <div>
