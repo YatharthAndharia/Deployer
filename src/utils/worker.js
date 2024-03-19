@@ -24,7 +24,7 @@ self.addEventListener(
     };
 
     const compiler = wrapper(self.Module);
-    console.log(`Solc version: ${compiler.version()}`);
+    // console.log(`Solc version: ${compiler.version()}`);
 
     self.postMessage({
       output: JSON.parse(compiler.compile(JSON.stringify(sourceCode))),

@@ -2,7 +2,7 @@
 'use client';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { compile } from '@/utils/compile';
 import { ethers } from 'ethers';
 import { deploy } from '@/utils/deploy';
@@ -22,12 +22,18 @@ import Head from 'next/head';
 import Editor from '@monaco-editor/react';
 
 export default function Home() {
+  const [tooltipContent, setTooltipContent] = useState('');
+  const [monaco, setMonaco] = useState();
+  const [editor, setEditor] = useState();
+  const [decorationIds, setDecorationIds] = useState([]);
+  const tooltipRef = useRef(null);
+
   const [loading, setLoading] = useState(false);
   const [textareaValue, setTextareaValue] = useState('');
   const [inputValue, setInputValue] = useState('');
 
   const [byteCode, setByteCode] = useState('');
-  const [error, setErrors] = useState('');
+  const [errors, setErrors] = useState('');
   const [showDialog, setShowDialog] = useState(false);
   // const [deployedBytecode, setDeployedBytecode] = useState('');
   const [abi, setAbi] = useState();
@@ -40,7 +46,13 @@ export default function Home() {
   const [provider, setProvider] = useState();
   const [signer, setSigner] = useState();
   const [showInput, setShowInput] = useState(false);
-  const editorRef = useRef(null);
+
+  useEffect(() => {
+    const savedContent = localStorage.getItem('editorContent');
+    if (savedContent) {
+      setTextareaValue(savedContent);
+    }
+  }, []);
 
   const handleCopyClick = async ({
     abi = null,
@@ -93,15 +105,52 @@ export default function Home() {
 
   const handleTextAreaChange = (event) => {
     setTextareaValue(event);
+    handleCompile(event);
+    localStorage.setItem('editorContent', event);
   };
 
   const handleInputChange = (event) => {
     setInputValue(event.target.value);
   };
 
-  const handleCompile = async () => {
+  const handleCompile = async (data = null) => {
     setShowDialog(false);
-    if (textareaValue) {
+
+    if (data) {
+      try {
+        const { byteCode, contractName, abi, error } = await compile(data);
+
+        setByteCode(byteCode);
+        setAbi(abi);
+        setContractName(contractName);
+
+        // error ? setErrors(error) : setShowDialog(true);
+
+        // setErrors(error);
+
+        if (error) {
+          setErrors(error);
+        } else {
+          setErrors(null);
+
+          setShowDialog(true);
+        }
+      } catch (error) {
+        setShowDialog(false);
+        const errorCodeRegex = /code=([A-Z_]+)/;
+
+        // Match the error code using the regex
+        const match = error.message.match(errorCodeRegex);
+
+        // Extract the error code if a match is found
+        if (match) {
+          const errorCode = match[1];
+          alert(errorCode);
+        } else {
+          alert('We are sorry! but something went wrong!');
+        }
+      }
+    } else if (textareaValue) {
       try {
         const { byteCode, contractName, abi, error } = await compile(
           textareaValue,
@@ -110,8 +159,16 @@ export default function Home() {
         setByteCode(byteCode);
         setAbi(abi);
         setContractName(contractName);
-        error ? alert(error[0].formattedMessage) : setShowDialog(true);
-        setErrors(error);
+
+        if (error) {
+          setErrors(error);
+        } else {
+          setErrors(null);
+          setShowDialog(true);
+        }
+        // error ? setErrors(error) : setShowDialog(true);
+
+        // setErrors(error);
       } catch (error) {
         setShowDialog(false);
         const errorCodeRegex = /code=([A-Z_]+)/;
@@ -191,6 +248,80 @@ export default function Home() {
       alert('Sorry! Something went wrong!');
     }
   };
+
+  const handleMouseHover = (e) => {
+    const lineNumber = e.target.position?.lineNumber;
+    if (lineNumber) {
+      if (errors) {
+        const { errorLines } = extractLineNumbers(errors);
+        errorLines[0] == lineNumber
+          ? setTooltipContent(`from solidity: ${errors[0].formattedMessage}`)
+          : setTooltipContent();
+      } else {
+        setTooltipContent();
+      }
+
+      // Position the tooltip
+      // tooltipRef.current.style.left = e.event.clientX + 'px';
+      // tooltipRef.current.style.top = e.event.clientY + 'px';
+      // tooltipRef.current.style.display = 'block';
+    } else {
+      setTooltipContent('');
+      tooltipRef.current.style.display = 'none';
+    }
+  };
+
+  function extractLineNumbers(errors) {
+    const errorLines = [];
+    let errorMessage;
+    if (errors[0].formattedMessage) {
+      errorMessage = errors[0].formattedMessage;
+
+      const lineMatch = errorMessage.match(/contract:(\d+)/);
+      if (lineMatch && lineMatch[1]) {
+        errorLines.push(parseInt(lineMatch[1]));
+      }
+    }
+
+    return { errorLines, errorMessage };
+  }
+
+  const decorateErrorLines = (monaco, editor, errors) => {
+    try {
+      // const errorLines = [2, 3];
+
+      if (errors) {
+        const { errorLines } = extractLineNumbers(errors);
+
+        const decorations = errorLines.map((lineNumber) => ({
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          options: {
+            isWholeLine: true,
+            className: 'border-b border-red-400',
+          },
+        }));
+        const decorationId = editor.deltaDecorations(
+          decorationIds,
+          decorations,
+        );
+
+        setDecorationIds(decorationId);
+        editor.onMouseMove(handleMouseHover);
+      } else {
+        editor.removeDecorations(decorationIds);
+        editor.onMouseMove(handleMouseHover);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useEffect(() => {
+    if (monaco && editor) {
+      decorateErrorLines(monaco, editor, errors);
+    }
+  }, [monaco, errors, editor]);
+
   return (
     <div>
       <Head>
@@ -232,17 +363,41 @@ export default function Home() {
       </div>
       <main className="flex flex-col items-center justify-between p-12">
         <Editor
-          className="font-s"
+          onMount={(editor, monaco) => {
+            setMonaco(monaco);
+            setEditor(editor);
+            // editor.onMouseMove(handleMouseHover);
+
+            // editor.onDidChangeModelContent(() => {
+            //   const decorations = decorateErrorLines(monaco);
+            //   editor.deltaDecorations([], decorations);
+            // });
+          }}
+          className="font-serif"
           theme="vs-dark"
-          height="90vh"
+          height="75vh"
           defaultLanguage="sol"
-          defaultValue={`// SPDX-License-Identifier: MIT`}
+          defaultValue={
+            localStorage.getItem('editorContent')
+              ? localStorage.getItem('editorContent')
+              : ''
+          }
           onChange={handleTextAreaChange}
         />
+        {tooltipContent ? (
+          <div
+            ref={tooltipRef}
+            className="bg-gray-600 text-white shadow p-2 rounded w-full"
+          >
+            {tooltipContent}
+          </div>
+        ) : undefined}
         <div>
           <Dialog>
             <DialogTrigger
-              onClick={handleCompile}
+              onClick={() => {
+                handleCompile();
+              }}
               className="mt-8 border border-gray-400 rounded-md p-2 hover:bg-gray-100"
             >
               Compile
