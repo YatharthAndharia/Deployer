@@ -48,7 +48,9 @@ export default function Home() {
   const [showInput, setShowInput] = useState(false);
 
   useEffect(() => {
-    const savedContent = localStorage.getItem('editorContent');
+    const savedContent = window
+      ? localStorage.getItem('editorContent')
+      : undefined;
     if (savedContent) {
       setTextareaValue(savedContent);
     }
@@ -106,7 +108,7 @@ export default function Home() {
   const handleTextAreaChange = (event) => {
     setTextareaValue(event);
     handleCompile(event);
-    localStorage.setItem('editorContent', event);
+    window ? localStorage.setItem('editorContent', event) : undefined;
   };
 
   const handleInputChange = (event) => {
@@ -378,9 +380,11 @@ export default function Home() {
           height="75vh"
           defaultLanguage="sol"
           defaultValue={
-            localStorage.getItem('editorContent')
+            globalThis.window
               ? localStorage.getItem('editorContent')
-              : ''
+                ? localStorage.getItem('editorContent')
+                : ''
+              : undefined
           }
           onChange={handleTextAreaChange}
         />
